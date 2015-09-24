@@ -18,9 +18,15 @@ using System;
 using System.Management.Automation;
 using Octopus.Client;
 using Octopus.Client.Model;
+using Octopus.Platform.Model;
+using System.Collections.Generic;
 
 namespace Octopus_Cmdlets
 {
+    /// <summary>
+    /// <para type="synopsis">Add a new machine.</para>
+    /// <para type="description">The Add-OctoMachine cmdlet adds a new machine (tentacle) to Octopus.</para>
+    /// </summary>
     [Cmdlet(VerbsCommon.Add, "Machine", DefaultParameterSetName = "ByName")]
     public class AddMachine : PSCmdlet
     {
@@ -50,7 +56,7 @@ namespace Octopus_Cmdlets
             Mandatory = true,
             ValueFromPipeline = true,
             ValueFromPipelineByPropertyName = true)]
-        public string[] Name { get; set; }
+        public string Name { get; set; }
 
         /// <summary>
         /// <para type="description">The thumbprint of the machine.</para>
@@ -78,7 +84,7 @@ namespace Octopus_Cmdlets
 
         /// <summary>
         /// <para type="description">
-        /// The communicatio style of the server. Either TentacleActive or TentaclePassive.
+        /// The communication style of the server. Either TentacleActive or TentaclePassive.
         /// </para>
         /// </summary>
         [Parameter(
@@ -87,14 +93,7 @@ namespace Octopus_Cmdlets
         [ValidateSet("TentacleActive", "TentaclePassive")]
         public string CommunicationStyle { get; set; }
 
-        //[Parameter]
-        //public string HostName { get; set; }
-        //[Parameter]
-        //public string Port { get; set; }
-
         private IOctopusRepository _octopus;
-        private EnvironmentResource _environment;
-
         /// <summary>
         /// BeginProcessing
         /// </summary>
@@ -104,9 +103,18 @@ namespace Octopus_Cmdlets
 
             if (ParameterSetName != "ByName") return;
 
-            _environment = _octopus.Environments.FindByName(EnvironmentName);
-            if (_environment == null)
-                throw new Exception(string.Format("Environment '{0}' was not found.", EnvironmentName));
+            if (Environment.Length != 1)
+                throw new Exception(string.Format("Only 1 Environment is currently supported, you specified {0}", Environment.Length));
+
+            var environmentIds = new List<string>();
+            foreach (var environment in Environment)
+            {
+                var e = _octopus.Environments.FindByName(environment);
+                if (e == null)
+                    throw new Exception(string.Format("Environment '{0}' was not found.", environment));
+                environmentIds.Add(e.Id);
+            }
+            EnvironmentId = environmentIds.ToArray();
         }
 
         /// <summary>
@@ -117,38 +125,25 @@ namespace Octopus_Cmdlets
             switch (ParameterSetName)
             {
                 case "ByName":
-                    ProcessByName();
-                    break;
                 case "ById":
-                    ProcessById();
+                    CreateMachine();
                     break;
                 default:
                     throw new ArgumentException("Unknown ParameterSetName: " + ParameterSetName);
             }
         }
 
-        private void ProcessByName()
+        private void CreateMachine()
         {
-            //var projects = Name.Select(name => new MachineResource
-            //{
-            //    Name = name,
-            //    EnvironmentIds = new ReferenceCollection(_environment.Id)
-            //});
-
-            //foreach (var project in projects)
-            //    _octopus.Projects.Create(project);
-        }
-
-        private void ProcessById()
-        {
-            //var projects = Name.Select(name => new MachineResource
-            //{
-            //    Name = name,
-            //    EnvironmentIds = EnvironmentId
-            //});
-
-            //foreach (var project in projects)
-            //    _octopus.Projects.Create(project);
+            _octopus.Machines.Create(new MachineResource
+            {
+                EnvironmentIds = new ReferenceCollection(EnvironmentId),
+                Name = Name,
+                Thumbprint = Thumbprint,
+                Roles = new ReferenceCollection(Roles),
+                Uri = Uri,
+                CommunicationStyle = (CommunicationStyle)Enum.Parse(typeof(CommunicationStyle), CommunicationStyle, true)
+            });
         }
     }
 }
